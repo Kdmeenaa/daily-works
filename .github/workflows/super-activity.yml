@@ -1,0 +1,148 @@
+name: Super Human Activity
+
+on:
+  schedule:
+    - cron: "30 2 * * *"     # Daily at random-ish time
+  workflow_dispatch:
+
+jobs:
+  super_activity:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Wait random seconds (to look human)
+        run: sleep $((RANDOM % 300))
+
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      # -------------------------------------------------
+      # 1. RANDOM DAILY COMMIT
+      # -------------------------------------------------
+      - name: Make random commit
+        run: |
+          echo "Update: $(date)" >> updates.txt
+          git config user.name "KrishnaBot"
+          git config user.email "mek127142@gmail.com"
+          git add .
+          git commit -m "chore: daily update $(date +%H:%M:%S)" || echo "No changes to commit"
+
+      # -------------------------------------------------
+      # 2. CREATE DAILY ISSUE
+      # -------------------------------------------------
+      - name: Create a daily issue
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "Daily Log - " + new Date().toISOString(),
+              body: "Auto generated activity log."
+            });
+
+      # -------------------------------------------------
+      # 3. CLOSE OLD ISSUES (2 days old)
+      # -------------------------------------------------
+      - name: Close old issues
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open"
+            });
+            for (const issue of issues.data) {
+              if (new Date() - new Date(issue.created_at) > 2 * 86400000) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  state: "closed"
+                });
+              }
+            }
+
+      # -------------------------------------------------
+      # 4. CREATE RANDOM BRANCH
+      # -------------------------------------------------
+      - name: Create random branch
+        id: branch
+        run: |
+          BR="update-$(date +%Y%m%d%H%M%S)"
+          echo "BRANCH=$BR" >> $GITHUB_OUTPUT
+          git checkout -b $BR
+
+      - name: Make additional change in new branch
+        run: |
+          echo "Random change at $(date)" >> random.txt
+          git add .
+          git commit -m "feat: random change"
+
+      # -------------------------------------------------
+      # 5. PUSH + CREATE PR
+      # -------------------------------------------------
+      - name: Push new branch
+        run: |
+          git push -u origin ${{ steps.branch.outputs.BRANCH }}
+
+      - name: Create Pull Request
+        id: create_pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: "${{ steps.branch.outputs.BRANCH }}",
+              base: "main",
+              title: "Auto PR - " + new Date().toISOString(),
+              body: "Automated Pull Request"
+            });
+            return pr.data.number;
+
+      # -------------------------------------------------
+      # 6. AUTO APPROVE + MERGE PR
+      # -------------------------------------------------
+      - name: Merge PR
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.pulls.merge({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: ${{ steps.create_pr.outputs.result }},
+              merge_method: "squash"
+            });
+
+      # -------------------------------------------------
+      # 7. DELETE MERGED BRANCH
+      # -------------------------------------------------
+      - name: Delete merged branch
+        run: |
+          git push origin --delete ${{ steps.branch.outputs.BRANCH }} || true
+
+      # -------------------------------------------------
+      # 8. WEEKLY SUMMARY ISSUE (every Sunday)
+      # -------------------------------------------------
+      - name: Weekly Issue Summary
+        if: ${{ endsWith(github.event.schedule, '0 2 * * 0') }}
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "Weekly Summary - " + new Date().toISOString(),
+              body: "Summary of all bot activity this week."
+            });
