@@ -2,7 +2,7 @@ name: Super Human Activity
 
 on:
   schedule:
-    - cron: "30 2 * * *"     # Daily at random-ish time
+    - cron: "30 2 * * *"
   workflow_dispatch:
 
 jobs:
@@ -20,9 +20,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      # -------------------------------------------------
       # 1. RANDOM DAILY COMMIT
-      # -------------------------------------------------
       - name: Make random commit
         run: |
           echo "Update: $(date)" >> updates.txt
@@ -31,13 +29,11 @@ jobs:
           git add .
           git commit -m "chore: daily update $(date +%H:%M:%S)" || echo "No changes to commit"
 
-      # -------------------------------------------------
       # 2. CREATE DAILY ISSUE
-      # -------------------------------------------------
       - name: Create a daily issue
         uses: actions/github-script@v6
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.PAT_TOKEN }}
           script: |
             await github.rest.issues.create({
               owner: context.repo.owner,
@@ -46,13 +42,11 @@ jobs:
               body: "Auto generated activity log."
             });
 
-      # -------------------------------------------------
-      # 3. CLOSE OLD ISSUES (2 days old)
-      # -------------------------------------------------
+      # 3. CLOSE OLD ISSUES
       - name: Close old issues
         uses: actions/github-script@v6
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.PAT_TOKEN }}
           script: |
             const issues = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
@@ -70,9 +64,7 @@ jobs:
               }
             }
 
-      # -------------------------------------------------
       # 4. CREATE RANDOM BRANCH
-      # -------------------------------------------------
       - name: Create random branch
         id: branch
         run: |
@@ -86,9 +78,7 @@ jobs:
           git add .
           git commit -m "feat: random change"
 
-      # -------------------------------------------------
       # 5. PUSH + CREATE PR
-      # -------------------------------------------------
       - name: Push new branch
         run: |
           git push -u origin ${{ steps.branch.outputs.BRANCH }}
@@ -97,7 +87,7 @@ jobs:
         id: create_pr
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.PAT_TOKEN }}
           script: |
             const pr = await github.rest.pulls.create({
               owner: context.repo.owner,
@@ -109,13 +99,11 @@ jobs:
             });
             return pr.data.number;
 
-      # -------------------------------------------------
-      # 6. AUTO APPROVE + MERGE PR
-      # -------------------------------------------------
+      # 6. MERGE PR
       - name: Merge PR
         uses: actions/github-script@v6
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.PAT_TOKEN }}
           script: |
             await github.rest.pulls.merge({
               owner: context.repo.owner,
@@ -124,21 +112,17 @@ jobs:
               merge_method: "squash"
             });
 
-      # -------------------------------------------------
       # 7. DELETE MERGED BRANCH
-      # -------------------------------------------------
       - name: Delete merged branch
         run: |
           git push origin --delete ${{ steps.branch.outputs.BRANCH }} || true
 
-      # -------------------------------------------------
-      # 8. WEEKLY SUMMARY ISSUE (every Sunday)
-      # -------------------------------------------------
+      # 8. WEEKLY SUMMARY
       - name: Weekly Issue Summary
         if: ${{ endsWith(github.event.schedule, '0 2 * * 0') }}
         uses: actions/github-script@v6
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.PAT_TOKEN }}
           script: |
             await github.rest.issues.create({
               owner: context.repo.owner,
